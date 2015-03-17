@@ -1,0 +1,6 @@
+Name: duklite
+Version: 0.1
+Description: A duktape-sqlite bridge
+Requires: duktape sqlite3
+SourcePath: source
+
