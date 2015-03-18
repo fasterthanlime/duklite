@@ -15,24 +15,19 @@ DDatabase: class {
 
     exec: func (duk: DukContext) -> Int {
         query := duk requireString(0)
-        "query = #{query toString()}" println()
         stmt := db prepare(query toString())
 
         bindIndex := 1
         numArgs := duk getTop() - 1
-        "numArgs = #{numArgs}" println()
         for (argIndex in 1..numArgs) {
             match {
                 case duk isNumber(argIndex) =>
                     val := duk requireNumber(argIndex)
                     stmt bindDouble(bindIndex, val)
-                    "arg #{argIndex} number = #{val}" println()
                 case duk isString(argIndex) =>
                     val := duk requireString(argIndex)
                     stmt bindText(bindIndex, val)
-                    "arg #{argIndex} string = #{val}" println()
                 case duk isNull(argIndex) =>
-                    "arg #{argIndex} null" println()
                     stmt bindNull(bindIndex)
                 case =>
                     raise("Unknown type in exec argument")
@@ -42,7 +37,6 @@ DDatabase: class {
        
         // results array
         dukResult := duk pushObject()
-        "dukResult = #{dukResult}" println()
         
         dukRows := duk pushArray()
         rowCount := 0
@@ -52,23 +46,17 @@ DDatabase: class {
         while (true) {
             res := stmt step()
             if (res == Sqlite3Code row) {
-                "got row" println()
                 numColumns := stmt columnCount()
-                "numColumns = #{numColumns}" println()
 
                 if (first) {
-                    "was first, not anymore" println()
                     first = false
                     dukCols := duk pushArray()
-                    "dukCols = #{dukCols}" println()
                     for (colIndex in 0..numColumns) {
                         dukCol := duk pushObject()
-                        "dukCol = #{dukCol}" println()
                         
                         key := stmt columnName(colIndex)
                         duk pushString(key)
                         duk putPropString(dukCol, "name")
-                        "pushed name = #{key}" println()
 
                         typ := stmt columnType(colIndex)
                         duk pushString(
@@ -86,18 +74,14 @@ DDatabase: class {
                                     ""
                             }
                         )
-                        "pushed type" println()
                         duk putPropString(dukCol, "type")
                         duk putPropIndex(dukCols, colIndex)
                     }
                     duk putPropString(dukResult, "columns")
-                    "put columns" println()
                 }
 
                 dukRow := duk pushArray()
-                "created dukRow = #{dukRow}" println()
                 for (colIndex in 0..numColumns) {
-                    "in column #{colIndex}" println()
                     val := stmt valueColumn(colIndex)
                     type := val type()
                     match (type) {
@@ -115,10 +99,8 @@ DDatabase: class {
                             raise("Type not supported")
                     }
                     duk putPropIndex(dukRow, colIndex)
-                    "put col in dukrow" println()
                 }
                 duk putPropIndex(dukRows, rowCount)
-                "put dukrow in dukrows" println()
                 rowCount += 1
             } else {
                 break
@@ -128,7 +110,6 @@ DDatabase: class {
         }
         stmt finalize()
 
-        "put dukRows in dukResult" println()
         duk putPropString(dukResult, "rows")
 
         1
