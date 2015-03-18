@@ -5,7 +5,7 @@ import sqlite3/sqlite3
 use duktape
 import duk/tape
 
-DDatabase: class {
+DB: class {
 
     db: Database 
 
