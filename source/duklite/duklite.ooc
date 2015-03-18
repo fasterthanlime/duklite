@@ -36,16 +36,51 @@ DDatabase: class {
         }
        
         // results array
-        dukResults := duk pushArray()
+        dukResult := duk pushObject()
+        
+        dukRows := duk pushArray()
         rowCount := 0
+
+        columnsDone := false
 
         while (true) {
             res := stmt step()
             if (res == Sqlite3Code row) {
-                dukRow := duk pushObject()
                 numColumns := stmt columnCount()
+
+                if (!columnsDone) {
+                    columnsDone = true
+                    dukCols := duk pushArray()
+                    for (colIndex in 0..numColumns) {
+                        dukCol := duk pushObject()
+                        
+                        key := stmt columnName(colIndex)
+                        duk pushString(key)
+                        duk putPropString(dukCol, "name")
+
+                        typ := stmt columnType(colIndex)
+                        duk pushString(
+                            match (typ) {
+                                case Sqlite3Type _integer =>
+                                    "INTEGER"
+                                case Sqlite3Type _float =>
+                                    "FLOAT"
+                                case Sqlite3Type _blob =>
+                                    "BLOB"
+                                case Sqlite3Type _text =>
+                                    "TEXT"
+                                case =>
+                                    raise("Type not supported")
+                                    ""
+                            }
+                        )
+                        duk putPropIndex(dukRows, colIndex)
+                    }
+                    duk putPropString(dukResult, "columns")
+                }
+
+                dukRow := duk pushArray()
                 for (colIndex in 0..numColumns) {
-                    key := stmt columnName(colIndex)
                     val := stmt valueColumn(colIndex)
                     type := val type()
                     match (type) {
@@ -62,17 +97,20 @@ DDatabase: class {
                         case =>
                             raise("Type not supported")
                     }
-                    duk putPropString(dukRow, key)
+                    duk putPropIndex(dukRow, colIndex)
                 }
-                duk putPropIndex(dukResults, rowCount)
+                duk putPropIndex(dukRows, rowCount)
                 rowCount += 1
             } else {
                 break
             }
+            duk putPropString(dukResult, "rows")
 
             // TODO: handle misuse, etc.
         }
         stmt finalize()
+
+        duk putPropString(dukResult, "rows")
 
         // todo: fill with result
         1
