@@ -24,13 +24,23 @@ DB: class {
                 case duk isNumber(argIndex) =>
                     val := duk requireNumber(argIndex)
                     stmt bindDouble(bindIndex, val)
+
                 case duk isString(argIndex) =>
                     val := duk requireString(argIndex)
                     stmt bindText(bindIndex, val)
+
                 case duk isNull(argIndex) =>
                     stmt bindNull(bindIndex)
+
+                case duk isBoolean(argIndex) =>
+                    val := duk requireBoolean(argIndex)
+                    stmt bindInt(bindIndex, val as Int)
+                    
+                case duk isUndefined(argIndex) =>
+                    duk throwError("arg #{argIndex} to #{query} is undefined")
+
                 case =>
-                    raise("Unknown type in exec argument")
+                    duk throwError("arg #{argIndex} to #{query} is of unknown type")
             }
             bindIndex += 1
         }
@@ -45,65 +55,72 @@ DB: class {
 
         while (true) {
             res := stmt step()
-            if (res == Sqlite3Code row) {
-                numColumns := stmt columnCount()
 
-                if (first) {
-                    first = false
-                    dukCols := duk pushArray()
+            match res {
+                case Sqlite3Code row =>
+                    numColumns := stmt columnCount()
+
+                    if (first) {
+                        first = false
+                        dukCols := duk pushArray()
+                        for (colIndex in 0..numColumns) {
+                            dukCol := duk pushObject()
+
+                            key := stmt columnName(colIndex)
+                            duk pushString(key)
+                            duk putPropString(dukCol, "name")
+
+                            type := stmt columnType(colIndex)
+                            duk pushString(
+                                match (type) {
+                                    case Sqlite3Type _integer =>
+                                        "INTEGER"
+                                    case Sqlite3Type _float =>
+                                        "FLOAT"
+                                    case Sqlite3Type _blob =>
+                                        "BLOB"
+                                    case Sqlite3Type _text =>
+                                        "TEXT"
+                                    case Sqlite3Type _null =>
+                                        "NULL"
+                                    case =>
+                                        duk throwError("When doing columns, sqlite type #{type} not supported")
+                                        ""
+                                }
+                            )
+                            duk putPropString(dukCol, "type")
+                            duk putPropIndex(dukCols, colIndex)
+                        }
+                        duk putPropString(dukResult, "columns")
+                    }
+
+                    dukRow := duk pushArray()
                     for (colIndex in 0..numColumns) {
-                        dukCol := duk pushObject()
-                        
-                        key := stmt columnName(colIndex)
-                        duk pushString(key)
-                        duk putPropString(dukCol, "name")
-
-                        typ := stmt columnType(colIndex)
-                        duk pushString(
-                            match (typ) {
-                                case Sqlite3Type _integer =>
-                                    "INTEGER"
-                                case Sqlite3Type _float =>
-                                    "FLOAT"
-                                case Sqlite3Type _blob =>
-                                    "BLOB"
-                                case Sqlite3Type _text =>
-                                    "TEXT"
-                                case =>
-                                    raise("Type not supported")
-                                    ""
-                            }
-                        )
-                        duk putPropString(dukCol, "type")
-                        duk putPropIndex(dukCols, colIndex)
+                        val := stmt valueColumn(colIndex)
+                        type := val type()
+                        match (type) {
+                            case Sqlite3Type _integer =>
+                                duk pushNumber(val toInt() as Double)
+                            case Sqlite3Type _float =>
+                                duk pushNumber(val toDouble())
+                            case Sqlite3Type _blob =>
+                                duk throwError("When doing row, sqlite blob type not supported!")
+                            case Sqlite3Type _text =>
+                                duk pushString(val toString())
+                            case Sqlite3Type _null =>
+                                duk pushNull()
+                            case =>
+                                duk throwError("When doing row, sqlite type #{type} not supported")
+                        }
+                        duk putPropIndex(dukRow, colIndex)
                     }
-                    duk putPropString(dukResult, "columns")
-                }
-
-                dukRow := duk pushArray()
-                for (colIndex in 0..numColumns) {
-                    val := stmt valueColumn(colIndex)
-                    type := val type()
-                    match (type) {
-                        case Sqlite3Type _integer =>
-                            duk pushNumber(val toInt() as Double)
-                        case Sqlite3Type _float =>
-                            duk pushNumber(val toDouble())
-                        case Sqlite3Type _blob =>
-                            raise("Blob type not supported!")
-                        case Sqlite3Type _text =>
-                            duk pushString(val toString())
-                        case Sqlite3Type _null =>
-                            duk pushNull()
-                        case =>
-                            raise("Type not supported")
-                    }
-                    duk putPropIndex(dukRow, colIndex)
-                }
-                duk putPropIndex(dukRows, rowCount)
-                rowCount += 1
-            } else {
-                break
+                    duk putPropIndex(dukRows, rowCount)
+                    rowCount += 1
+                case Sqlite3Code done =>
+                    // all good!
+                    break
+                case =>
+                    duk throwError("sqlite error: #{db errmsg()}")
             }
 
             // TODO: handle misuse, etc.
@@ -113,6 +130,10 @@ DB: class {
         duk putPropString(dukResult, "rows")
 
         1
+    }
+
+    lastInsertRowId: func -> Int {
+        db lastInsertRowId()
     }
 
 }
