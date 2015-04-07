@@ -35,6 +35,11 @@ DB: class {
                 case duk isBoolean(argIndex) =>
                     val := duk requireBoolean(argIndex)
                     stmt bindInt(bindIndex, val as Int)
+
+                case duk isBuffer(argIndex) =>
+                    bufSize: SizeT
+                    val := duk requireBuffer(argIndex, bufSize&)
+                    stmt bindBlob(bindIndex, val, bufSize as Int)
                     
                 case duk isUndefined(argIndex) =>
                     duk throwError("arg #{argIndex} to #{query} is undefined")
@@ -96,6 +101,7 @@ DB: class {
 
                     dukRow := duk pushArray()
                     for (colIndex in 0..numColumns) {
+                        // TODO: sqlite docs say not to use value column.
                         val := stmt valueColumn(colIndex)
                         type := val type()
                         match (type) {
@@ -104,7 +110,10 @@ DB: class {
                             case Sqlite3Type _float =>
                                 duk pushNumber(val toDouble())
                             case Sqlite3Type _blob =>
-                                duk throwError("When doing row, sqlite blob type not supported!")
+                                bufSize := stmt columnBytes(colIndex)
+                                src := val toBlob()
+                                dst := duk pushFixedBuffer(bufSize)
+                                memcpy(dst, src, bufSize)
                             case Sqlite3Type _text =>
                                 duk pushString(val toString())
                             case Sqlite3Type _null =>
